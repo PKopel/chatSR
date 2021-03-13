@@ -1,24 +1,27 @@
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
+use std::str;
 use std::thread;
 
 fn handle_client(mut stream: TcpStream) {
-    let mut data = [0 as u8; 1024]; // using 50 byte buffer
+    let mut data = [0 as u8; 1024];
+    let addr = stream.peer_addr().unwrap();
     loop {
         match stream.read(&mut data) {
             Ok(size) => {
-                stream.write(&data[0..size]).unwrap();
+                match str::from_utf8(&data[..size]) {
+                    Ok("end") => break,
+                    _ => stream.write(&data[0..size]).unwrap(),
+                };
             }
             Err(_) => {
-                println!(
-                    "An error occurred, terminating connection with {}",
-                    stream.peer_addr().unwrap()
-                );
-                stream.shutdown(Shutdown::Both).unwrap();
+                println!("An error occurred, terminating connection with {}", addr);
                 break;
             }
         }
     }
+    stream.shutdown(Shutdown::Both).unwrap();
+    println!("Closing connection: {}", addr);
 }
 
 fn main() {
@@ -29,14 +32,10 @@ fn main() {
         match stream {
             Ok(stream) => {
                 println!("New connection: {}", stream.peer_addr().unwrap());
-                thread::spawn(move || {
-                    // connection succeeded
-                    handle_client(stream)
-                });
+                thread::spawn(move || handle_client(stream));
             }
             Err(e) => {
                 println!("Error: {}", e);
-                /* connection failed */
             }
         }
     }
