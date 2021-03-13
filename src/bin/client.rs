@@ -12,11 +12,13 @@ use std::net::UdpSocket;
 use std::str;
 use std::thread::{self, JoinHandle};
 
-const MENU: &str = r#"TCP/UDP chat
-controls:
+const SERVER_ADDR: &str = "127.0.0.1:34254";
+const CLIENT_ADDR: &str = "127.0.0.1:34255";
+const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
- - 't' - send TCP message
- - 'u' - send UDP message
+ - 'h' - display this help
+ - 't' - send message via TCP
+ - 'u' - send message via UDP
 "#;
 
 fn get_nick() -> String {
@@ -36,7 +38,7 @@ fn show_msg(buff: &[u8], size: usize) {
     match str::from_utf8(&buff[..size]) {
         Ok(msg) => match json::parse(msg) {
             Ok(msg_obj) => {
-                print!("{}> {}", msg_obj["nick"], msg_obj["text"]);
+                print!("<{}>: {}", msg_obj["nick"], msg_obj["text"]);
                 io::stdout().flush().unwrap()
             }
             _ => return,
@@ -65,8 +67,8 @@ struct Client {
 
 impl Client {
     fn new() -> Result<Client, Error> {
-        let stream = TcpStream::connect("127.0.0.1:34254")?;
-        let socket = UdpSocket::bind("127.0.0.1:34255")?;
+        let stream = TcpStream::connect(SERVER_ADDR)?;
+        let socket = UdpSocket::bind(CLIENT_ADDR)?;
         let nick = get_nick();
         let client = Client {
             nick: nick,
@@ -108,7 +110,6 @@ impl Client {
                     }
                 }
             }
-            println!("TCP stream closed")
         }));
     }
 
@@ -137,17 +138,22 @@ impl Client {
                 'u' => {
                     terminal::disable_raw_mode()?;
                     let msg = self.prepare_msg();
-                    self.socket.send_to(msg.as_bytes(), "127.0.0.1:34254")?;
+                    self.socket.send_to(msg.as_bytes(), SERVER_ADDR)?;
                 }
                 't' => {
                     terminal::disable_raw_mode()?;
                     let msg = self.prepare_msg();
                     self.stream.write(msg.as_bytes())?;
                 }
+                'h' => {
+                    terminal::disable_raw_mode()?;
+                    print!("{}", HELP)
+                }
                 'q' => {
                     terminal::disable_raw_mode()?;
                     execute!(io::stdout(), MoveToColumn(0), Show)?;
                     self.stream.write(b"end")?;
+                    self.socket.send_to(b"end", CLIENT_ADDR)?;
                     break;
                 }
                 _ => {}
@@ -159,16 +165,16 @@ impl Client {
 }
 
 fn main() -> io::Result<()> {
-    print!("{}", MENU);
+    print!("{}", HELP);
     println!("starting client...");
     let mut client = match Client::new() {
         Ok(client) => client,
         Err(err) => return Err(err),
     };
     let tcp_handle = client.start_tcp_receiver()?;
-    //let udp_handle = client.start_udp_receiver()?;
+    let udp_handle = client.start_udp_receiver()?;
     client.run().unwrap();
     tcp_handle.join().unwrap();
-    //udp_handle.join().unwrap();
+    udp_handle.join().unwrap();
     Ok(())
 }
