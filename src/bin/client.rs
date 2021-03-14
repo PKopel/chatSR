@@ -6,7 +6,6 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use json;
-use rand::Rng;
 use std::io::{self, Error, Read, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
@@ -46,14 +45,14 @@ fn show_msg(buff: &[u8], size: usize) {
     }
 }
 
-fn read_char() -> io::Result<char> {
+fn read_char() -> char {
     loop {
         if let Ok(Event::Key(KeyEvent {
             code: KeyCode::Char(c),
             ..
         })) = event::read()
         {
-            return Ok(c);
+            return c;
         }
     }
 }
@@ -68,9 +67,8 @@ struct Client {
 impl Client {
     fn new() -> Result<Client, Error> {
         println!("starting client...");
-        let mut rng = rand::thread_rng();
-        let addr = SocketAddr::from(([127, 0, 0, 1], rng.gen_range(35000..40000)));
         let stream = TcpStream::connect(SERVER_ADDR)?;
+        let addr = stream.local_addr()?;
         let socket = UdpSocket::bind(addr)?;
         let nick = get_nick();
         let client = Client {
@@ -94,7 +92,7 @@ impl Client {
         let mut msg_text = String::new();
         io::stdin().read_line(&mut msg_text).unwrap();
         execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
-        print!("\r<{}>: {}", self.nick, msg_text);
+        print!("\r<you>: {}", msg_text);
         json::stringify(json::object! {
             nick: self.nick.as_str(),
             text: msg_text
@@ -136,10 +134,12 @@ impl Client {
     }
 
     fn run(&mut self) -> crossterm::Result<()> {
+        let tcp_handle = self.start_tcp_receiver()?;
+        let udp_handle = self.start_udp_receiver()?;
         loop {
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
-            match read_char()? {
+            match read_char() {
                 'u' => {
                     terminal::disable_raw_mode()?;
                     let msg = self.prepare_msg();
@@ -165,20 +165,14 @@ impl Client {
             };
         }
         println!("closing client...");
+        tcp_handle.join().unwrap();
+        udp_handle.join().unwrap();
         Ok(())
     }
 }
 
-fn main() -> io::Result<()> {
+fn main() -> crossterm::Result<()> {
     print!("{}", HELP);
-    let mut client = match Client::new() {
-        Ok(client) => client,
-        Err(err) => return Err(err),
-    };
-    let tcp_handle = client.start_tcp_receiver()?;
-    let udp_handle = client.start_udp_receiver()?;
-    client.run().unwrap();
-    tcp_handle.join().unwrap();
-    udp_handle.join().unwrap();
-    Ok(())
+    let mut client = Client::new()?;
+    client.run()
 }
