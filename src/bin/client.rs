@@ -1,3 +1,4 @@
+use chrono::{Datelike, Timelike, Utc};
 use crossterm::{
     cursor::{Hide, MoveTo, MoveToColumn, Show},
     event::{self, Event, KeyCode, KeyEvent},
@@ -15,6 +16,7 @@ use std::thread::{self, JoinHandle};
 
 const SERVER_PORT: usize = 34254;
 //const MULTI_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
+const SMALL_HELP: &str = "[t|u|m|h|q]";
 const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
  - 'h' - display this help
@@ -37,10 +39,19 @@ fn get_string(prompt: &str) -> String {
 }
 
 fn show_msg(buff: &[u8], size: usize) {
+    let now = Utc::now();
+    let (_pm, hour) = now.hour12();
     match str::from_utf8(&buff[..size]) {
         Ok(msg) => match json::parse(msg) {
             Ok(msg_obj) => {
-                print!("\r<{}>: {}", msg_obj["nick"], msg_obj["text"]);
+                print!(
+                    "\r[{:02}:{:02}]<{}>: {}\r{}",
+                    hour,
+                    now.minute(),
+                    msg_obj["nick"],
+                    msg_obj["text"],
+                    SMALL_HELP
+                );
                 io::stdout().flush().unwrap()
             }
             _ => return,
@@ -97,10 +108,12 @@ impl Client {
             Print("your message: ")
         )
         .unwrap();
+        let now = Utc::now();
+        let (_pm, hour) = now.hour12();
         let mut msg_text = String::new();
         io::stdin().read_line(&mut msg_text).unwrap();
         execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
-        print!("\r<you>: {}", msg_text);
+        print!("\r[{:02}:{:02}]<you>: {}", hour, now.minute(), msg_text);
         json::stringify(json::object! {
             nick: self.nick.as_str(),
             text: msg_text
@@ -145,7 +158,7 @@ impl Client {
         let tcp_handle = self.start_tcp_receiver()?;
         let udp_handle = self.start_udp_receiver()?;
         loop {
-            print!("\r[t|u|m|h|q]");
+            print!("\r{}", SMALL_HELP);
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
             match get_char() {
