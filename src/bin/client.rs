@@ -11,7 +11,7 @@ use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
 use std::thread::{self, JoinHandle};
 
-const SERVER_ADDR: &str = "127.0.0.1:34254";
+const SERVER_PORT: usize = 34254;
 const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
  - 'h' - display this help
@@ -19,15 +19,15 @@ const HELP: &str = r#"TCP/UDP chat controls:
  - 'u' - send message via UDP
 "#;
 
-fn get_nick() -> String {
-    print!("your nick: ");
+fn get_string(prompt: &str) -> String {
+    print!("{}: ", prompt);
     let mut nick = String::new();
     io::stdout().flush().unwrap();
     match io::stdin().read_line(&mut nick) {
         Ok(_) => return String::from(nick.trim_end()),
         _ => {
             println!("try again");
-            return get_nick();
+            return get_string(prompt);
         }
     }
 }
@@ -45,7 +45,7 @@ fn show_msg(buff: &[u8], size: usize) {
     }
 }
 
-fn read_char() -> char {
+fn get_char() -> char {
     loop {
         if let Ok(Event::Key(KeyEvent {
             code: KeyCode::Char(c),
@@ -61,21 +61,25 @@ struct Client {
     nick: String,
     stream: TcpStream,
     socket: UdpSocket,
-    addr: SocketAddr,
+    client_addr: SocketAddr,
+    server_addr: SocketAddr,
 }
 
 impl Client {
     fn new() -> Result<Client, Error> {
         println!("starting client...");
-        let stream = TcpStream::connect(SERVER_ADDR)?;
+        let server_host = get_string("server host address");
+        let server_addr = format!("{}:{}", server_host, SERVER_PORT).parse().unwrap();
+        let stream = TcpStream::connect(server_addr)?;
         let addr = stream.local_addr()?;
         let socket = UdpSocket::bind(addr)?;
-        let nick = get_nick();
+        let nick = get_string("your nick");
         let client = Client {
             nick: nick,
             stream: stream.try_clone()?,
             socket: socket.try_clone()?,
-            addr: addr,
+            client_addr: addr,
+            server_addr: server_addr,
         };
         Ok(client)
     }
@@ -139,11 +143,11 @@ impl Client {
         loop {
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
-            match read_char() {
+            match get_char() {
                 'u' => {
                     terminal::disable_raw_mode()?;
                     let msg = self.prepare_msg();
-                    self.socket.send_to(msg.as_bytes(), SERVER_ADDR)?;
+                    self.socket.send_to(msg.as_bytes(), self.server_addr)?;
                 }
                 't' => {
                     terminal::disable_raw_mode()?;
@@ -158,7 +162,7 @@ impl Client {
                     terminal::disable_raw_mode()?;
                     execute!(io::stdout(), MoveToColumn(0), Show)?;
                     self.stream.write(b"end")?;
-                    self.socket.send_to(b"end", self.addr)?;
+                    self.socket.send_to(b"end", self.client_addr)?;
                     break;
                 }
                 _ => {}

@@ -1,10 +1,23 @@
 use std::io::{self, Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream, UdpSocket};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::str;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-const SERVER_ADDR: &str = "127.0.0.1:34254";
+const SERVER_PORT: usize = 34254;
+
+fn get_string(prompt: &str) -> String {
+    print!("{}: ", prompt);
+    let mut nick = String::new();
+    io::stdout().flush().unwrap();
+    match io::stdin().read_line(&mut nick) {
+        Ok(_) => return String::from(nick.trim_end()),
+        _ => {
+            println!("try again");
+            return get_string(prompt);
+        }
+    }
+}
 
 struct Server {
     listener: TcpListener,
@@ -14,8 +27,10 @@ struct Server {
 
 impl Server {
     fn new() -> io::Result<Server> {
-        let listener = TcpListener::bind(SERVER_ADDR)?;
-        let socket = UdpSocket::bind(SERVER_ADDR)?;
+        let server_host = get_string("server host address");
+        let server_addr: SocketAddr = format!("{}:{}", server_host, SERVER_PORT).parse().unwrap();
+        let listener = TcpListener::bind(server_addr)?;
+        let socket = UdpSocket::bind(server_addr)?;
         let clients = Arc::new(Mutex::new(vec![]));
         Ok(Server {
             listener: listener,
