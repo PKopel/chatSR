@@ -11,12 +11,16 @@ use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
 use std::thread::{self, JoinHandle};
 
+//const INADDR_ANY: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
+
 const SERVER_PORT: usize = 34254;
+//const MULTI_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
 const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
  - 'h' - display this help
  - 't' - send message via TCP
  - 'u' - send message via UDP
+ - 'm' - send message via UDP multicast
 "#;
 
 fn get_string(prompt: &str) -> String {
@@ -141,9 +145,15 @@ impl Client {
         let tcp_handle = self.start_tcp_receiver()?;
         let udp_handle = self.start_udp_receiver()?;
         loop {
+            print!("\r[t|u|m|h|q]");
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
             match get_char() {
+                'm' => {
+                    terminal::disable_raw_mode()?;
+                    let msg = self.prepare_msg();
+                    self.socket.send_to(msg.as_bytes(), self.server_addr)?;
+                }
                 'u' => {
                     terminal::disable_raw_mode()?;
                     let msg = self.prepare_msg();
@@ -156,7 +166,7 @@ impl Client {
                 }
                 'h' => {
                     terminal::disable_raw_mode()?;
-                    print!("{}", HELP)
+                    print!("\r{}", HELP)
                 }
                 'q' => {
                     terminal::disable_raw_mode()?;

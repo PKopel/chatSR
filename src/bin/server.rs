@@ -52,7 +52,7 @@ impl Server {
                             _ => {
                                 for mut client in clients.lock().unwrap().iter() {
                                     if client.peer_addr().unwrap() != addr {
-                                        client.write(&data[0..size]).unwrap();
+                                        client.write(&data[..size]).unwrap();
                                     }
                                 }
                             }
@@ -85,9 +85,10 @@ impl Server {
                         match str::from_utf8(&data[..size]) {
                             Ok("end") => break,
                             _ => {
-                                for mut client in clients.lock().unwrap().iter() {
-                                    if client.peer_addr().unwrap() != addr {
-                                        client.write(&data[0..size]).unwrap();
+                                for client in clients.lock().unwrap().iter() {
+                                    let client_addr = client.peer_addr().unwrap();
+                                    if client_addr != addr {
+                                        socket.send_to(&data[..size], client_addr).unwrap();
                                     }
                                 }
                             }
