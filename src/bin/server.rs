@@ -4,20 +4,10 @@ use std::str;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-const SERVER_PORT: usize = 34254;
+extern crate chatsr;
+use crate::chatsr::{get_string, timestamp};
 
-fn get_string(prompt: &str) -> String {
-    print!("{}: ", prompt);
-    let mut nick = String::new();
-    io::stdout().flush().unwrap();
-    match io::stdin().read_line(&mut nick) {
-        Ok(_) => return String::from(nick.trim_end()),
-        _ => {
-            println!("try again");
-            return get_string(prompt);
-        }
-    }
-}
+const SERVER_PORT: usize = 34254;
 
 struct Server {
     listener: TcpListener,
@@ -59,7 +49,11 @@ impl Server {
                         };
                     }
                     Err(_) => {
-                        println!("An error occurred, terminating connection with {}", addr);
+                        println!(
+                            "[{}] An error occurred, terminating connection with {}",
+                            timestamp(),
+                            addr
+                        );
                         break;
                     }
                 }
@@ -70,7 +64,7 @@ impl Server {
                 .iter()
                 .position(|n| n.peer_addr().unwrap() == addr)
                 .map(|e| clients.remove(e));
-            println!("Closing connection: {}", addr);
+            println!("[{}] Closing connection: {}", timestamp(), addr);
         })
     }
 
@@ -95,7 +89,10 @@ impl Server {
                         };
                     }
                     Err(_) => {
-                        println!("An error occurred while processing UDP message");
+                        println!(
+                            "[{}] An error occurred while processing UDP message",
+                            timestamp()
+                        );
                         break;
                     }
                 }
@@ -106,12 +103,12 @@ impl Server {
     fn run(&self) -> io::Result<()> {
         let mut handles: Vec<JoinHandle<()>> = vec![];
         handles.push(self.start_client_socket()?);
-        println!("Server listening on port 34254");
+        println!("[{}] Server listening on port 34254", timestamp());
         loop {
             let stream = self.listener.accept();
             match stream {
                 Ok((stream, addr)) => {
-                    println!("New connection: {}", addr);
+                    println!("[{}] New connection: {}", timestamp(), addr);
                     self.clients
                         .lock()
                         .unwrap()

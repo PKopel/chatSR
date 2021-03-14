@@ -1,7 +1,5 @@
-use chrono::{Datelike, Timelike, Utc};
 use crossterm::{
     cursor::{Hide, MoveTo, MoveToColumn, Show},
-    event::{self, Event, KeyCode, KeyEvent},
     execute,
     style::Print,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
@@ -12,10 +10,10 @@ use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
 use std::thread::{self, JoinHandle};
 
-//const INADDR_ANY: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
+extern crate chatsr;
+use crate::chatsr::{get_char, get_string, show_msg, timestamp};
 
 const SERVER_PORT: usize = 34254;
-//const MULTI_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 123);
 const SMALL_HELP: &str = "[t|u|m|h|q]";
 const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
@@ -24,53 +22,6 @@ const HELP: &str = r#"TCP/UDP chat controls:
  - 'u' - send message via UDP
  - 'm' - send message via UDP multicast
 "#;
-
-fn get_string(prompt: &str) -> String {
-    print!("{}: ", prompt);
-    let mut nick = String::new();
-    io::stdout().flush().unwrap();
-    match io::stdin().read_line(&mut nick) {
-        Ok(_) => return String::from(nick.trim_end()),
-        _ => {
-            println!("try again");
-            return get_string(prompt);
-        }
-    }
-}
-
-fn show_msg(buff: &[u8], size: usize) {
-    let now = Utc::now();
-    let (_pm, hour) = now.hour12();
-    match str::from_utf8(&buff[..size]) {
-        Ok(msg) => match json::parse(msg) {
-            Ok(msg_obj) => {
-                print!(
-                    "\r[{:02}:{:02}]<{}>: {}\r{}",
-                    hour,
-                    now.minute(),
-                    msg_obj["nick"],
-                    msg_obj["text"],
-                    SMALL_HELP
-                );
-                io::stdout().flush().unwrap()
-            }
-            _ => return,
-        },
-        Err(err) => println!("{}", err),
-    }
-}
-
-fn get_char() -> char {
-    loop {
-        if let Ok(Event::Key(KeyEvent {
-            code: KeyCode::Char(c),
-            ..
-        })) = event::read()
-        {
-            return c;
-        }
-    }
-}
 
 struct Client {
     nick: String,
@@ -108,13 +59,13 @@ impl Client {
             Print("your message: ")
         )
         .unwrap();
-        let now = Utc::now();
-        let (_pm, hour) = now.hour12();
+        let msg_time = timestamp();
         let mut msg_text = String::new();
         io::stdin().read_line(&mut msg_text).unwrap();
         execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
-        print!("\r[{:02}:{:02}]<you>: {}", hour, now.minute(), msg_text);
+        print!("\r[{}]<you>: {}", msg_time, msg_text);
         json::stringify(json::object! {
+            time: msg_time,
             nick: self.nick.as_str(),
             text: msg_text
         })
@@ -133,6 +84,8 @@ impl Client {
                         break;
                     }
                 }
+                print!("\rpress {}", SMALL_HELP);
+                io::stdout().flush().unwrap();
             }
         }));
     }
@@ -150,6 +103,8 @@ impl Client {
                         break;
                     }
                 }
+                print!("\rpress {}", SMALL_HELP);
+                io::stdout().flush().unwrap();
             }
         }));
     }
@@ -158,7 +113,7 @@ impl Client {
         let tcp_handle = self.start_tcp_receiver()?;
         let udp_handle = self.start_udp_receiver()?;
         loop {
-            print!("\r{}", SMALL_HELP);
+            print!("\rpress {}", SMALL_HELP);
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
             match get_char() {
