@@ -1,19 +1,18 @@
 use crossterm::{
-    cursor::{Hide, MoveToColumn, Show},
+    cursor::{Hide, MoveTo, MoveToColumn, Show},
     event::{self, Event, KeyCode, KeyEvent},
     execute,
     style::Print,
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use json;
+use rand::Rng;
 use std::io::{self, Error, Read, Write};
-use std::net::TcpStream;
-use std::net::UdpSocket;
+use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
 use std::thread::{self, JoinHandle};
 
 const SERVER_ADDR: &str = "127.0.0.1:34254";
-const CLIENT_ADDR: &str = "127.0.0.1:34255";
 const HELP: &str = r#"TCP/UDP chat controls:
  - 'q' - quit
  - 'h' - display this help
@@ -38,7 +37,7 @@ fn show_msg(buff: &[u8], size: usize) {
     match str::from_utf8(&buff[..size]) {
         Ok(msg) => match json::parse(msg) {
             Ok(msg_obj) => {
-                print!("<{}>: {}", msg_obj["nick"], msg_obj["text"]);
+                print!("\r<{}>: {}", msg_obj["nick"], msg_obj["text"]);
                 io::stdout().flush().unwrap()
             }
             _ => return,
@@ -63,17 +62,22 @@ struct Client {
     nick: String,
     stream: TcpStream,
     socket: UdpSocket,
+    addr: SocketAddr,
 }
 
 impl Client {
     fn new() -> Result<Client, Error> {
+        println!("starting client...");
+        let mut rng = rand::thread_rng();
+        let addr = SocketAddr::from(([127, 0, 0, 1], rng.gen_range(35000..40000)));
         let stream = TcpStream::connect(SERVER_ADDR)?;
-        let socket = UdpSocket::bind(CLIENT_ADDR)?;
+        let socket = UdpSocket::bind(addr)?;
         let nick = get_nick();
         let client = Client {
             nick: nick,
             stream: stream.try_clone()?,
             socket: socket.try_clone()?,
+            addr: addr,
         };
         Ok(client)
     }
@@ -82,7 +86,7 @@ impl Client {
         execute!(
             io::stdout(),
             EnterAlternateScreen,
-            MoveToColumn(0),
+            MoveTo(0, 0),
             Show,
             Print("your message: ")
         )
@@ -90,6 +94,7 @@ impl Client {
         let mut msg_text = String::new();
         io::stdin().read_line(&mut msg_text).unwrap();
         execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
+        print!("\r<{}>: {}", self.nick, msg_text);
         json::stringify(json::object! {
             nick: self.nick.as_str(),
             text: msg_text
@@ -153,7 +158,7 @@ impl Client {
                     terminal::disable_raw_mode()?;
                     execute!(io::stdout(), MoveToColumn(0), Show)?;
                     self.stream.write(b"end")?;
-                    self.socket.send_to(b"end", CLIENT_ADDR)?;
+                    self.socket.send_to(b"end", self.addr)?;
                     break;
                 }
                 _ => {}
@@ -166,7 +171,6 @@ impl Client {
 
 fn main() -> io::Result<()> {
     print!("{}", HELP);
-    println!("starting client...");
     let mut client = match Client::new() {
         Ok(client) => client,
         Err(err) => return Err(err),
