@@ -30,6 +30,12 @@ pub fn get_string(prompt: &str) -> String {
     }
 }
 
+pub fn get_message() -> String {
+    let mut msg_text = String::new();
+    io::stdin().read_line(&mut msg_text).unwrap();
+    msg_text
+}
+
 pub fn get_addr(port: usize) -> SocketAddr {
     let server_host = get_string("server host address");
     match format!("{}:{}", server_host, port).parse() {

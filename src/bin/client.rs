@@ -11,7 +11,7 @@ use std::str;
 use std::thread::{self, JoinHandle};
 
 extern crate chatsr;
-use crate::chatsr::{get_addr, get_char, get_string, show_msg, timestamp};
+use crate::chatsr::{get_addr, get_char, get_message, get_string, show_msg, timestamp};
 
 const SERVER_PORT: usize = 34254;
 const SMALL_HELP: &str = "[t|u|h|q]";
@@ -94,9 +94,8 @@ impl Client {
             Print("your message: ")
         )
         .unwrap();
+        let msg_text = get_message();
         let msg_time = timestamp();
-        let mut msg_text = String::new();
-        io::stdin().read_line(&mut msg_text).unwrap();
         execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
         print!("\r[{}]<you>: {}", msg_time, msg_text);
         return json::stringify(json::object! {
