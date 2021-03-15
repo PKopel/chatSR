@@ -1,11 +1,10 @@
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket};
-use std::str;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 extern crate chatsr;
-use crate::chatsr::{get_string, timestamp};
+use crate::chatsr::{connection_error, get_string, timestamp};
 
 const SERVER_PORT: usize = 34254;
 
@@ -22,72 +21,73 @@ impl Server {
         let listener = TcpListener::bind(server_addr)?;
         let socket = UdpSocket::bind(server_addr)?;
         let clients = Arc::new(Mutex::new(vec![]));
-        Ok(Server {
+        return Ok(Server {
             listener: listener,
             socket: socket,
             clients: clients,
-        })
+        });
     }
 
     fn start_client_stream(&self, mut stream: TcpStream) -> JoinHandle<()> {
         let clients = Arc::clone(&self.clients);
-        thread::spawn(move || {
+        return thread::spawn(move || {
             let mut data = [0 as u8; 1024];
             let addr = stream.peer_addr().unwrap();
             loop {
                 match stream.read(&mut data) {
-                    Ok(size) => {
-                        match str::from_utf8(&data[..size]) {
-                            Ok("end") => break,
-                            _ => {
-                                for mut client in clients.lock().unwrap().iter() {
-                                    if client.peer_addr().unwrap() != addr {
-                                        client.write(&data[..size]).unwrap();
-                                    }
+                    Ok(size) if size > 3 => {
+                        for mut client in clients.lock().unwrap().iter() {
+                            if let Ok(client_addr) = client.peer_addr() {
+                                if client_addr != addr {
+                                    match client.write(&data[..size]) {
+                                        Err(_) => connection_error(client_addr),
+                                        _ => continue,
+                                    };
                                 }
+                            } else {
+                                break;
                             }
-                        };
+                        }
                     }
+                    Ok(_) => break,
                     Err(_) => {
-                        println!(
-                            "[{}] An error occurred, terminating connection with {}",
-                            timestamp(),
-                            addr
-                        );
+                        connection_error(addr);
                         break;
                     }
                 }
             }
             stream.shutdown(Shutdown::Both).unwrap();
             let mut clients = clients.lock().unwrap();
-            clients
-                .iter()
-                .position(|n| n.peer_addr().unwrap() == addr)
-                .map(|e| clients.remove(e));
+            clients.retain(|client| match client.peer_addr() {
+                Ok(client_addr) if client_addr != addr => true,
+                _ => false,
+            });
             println!("[{}] Closing connection: {}", timestamp(), addr);
-        })
+        });
     }
 
-    fn start_client_socket(&self) -> io::Result<JoinHandle<()>> {
+    fn start_client_socket(&self) -> JoinHandle<()> {
         let clients = Arc::clone(&self.clients);
-        let socket = self.socket.try_clone()?;
-        Ok(thread::spawn(move || {
+        let socket = self.socket.try_clone().unwrap();
+        return thread::spawn(move || {
             let mut data = [0 as u8; 1024];
             loop {
                 match socket.recv_from(&mut data) {
-                    Ok((size, addr)) => {
-                        match str::from_utf8(&data[..size]) {
-                            Ok("end") => break,
-                            _ => {
-                                for client in clients.lock().unwrap().iter() {
-                                    let client_addr = client.peer_addr().unwrap();
-                                    if client_addr != addr {
-                                        socket.send_to(&data[..size], client_addr).unwrap();
-                                    }
+                    Ok((size, addr)) if size > 3 => {
+                        for client in clients.lock().unwrap().iter() {
+                            if let Ok(client_addr) = client.peer_addr() {
+                                if client_addr != addr {
+                                    match socket.send_to(&data[..size], client_addr) {
+                                        Err(_) => connection_error(client_addr),
+                                        _ => continue,
+                                    };
                                 }
+                            } else {
+                                break;
                             }
-                        };
+                        }
                     }
+                    Ok(_) => break,
                     Err(_) => {
                         println!(
                             "[{}] An error occurred while processing UDP message",
@@ -97,12 +97,12 @@ impl Server {
                     }
                 }
             }
-        }))
+        });
     }
 
     fn run(&self) -> io::Result<()> {
         let mut handles: Vec<JoinHandle<()>> = vec![];
-        handles.push(self.start_client_socket()?);
+        handles.push(self.start_client_socket());
         println!("[{}] Server listening on port 34254", timestamp());
         loop {
             let stream = self.listener.accept();

@@ -1,7 +1,8 @@
-use chrono::{Timelike, Utc};
+use chrono::{Local, Timelike};
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use json;
 use std::io::{self, Write};
+use std::net::SocketAddr;
 use std::str;
 
 pub fn get_char() -> char {
@@ -22,17 +23,27 @@ pub fn get_string(prompt: &str) -> String {
     io::stdout().flush().unwrap();
     match io::stdin().read_line(&mut nick) {
         Ok(_) => return String::from(nick.trim_end()),
-        _ => {
-            println!("try again");
+        Err(err) => {
+            println!("{}", err);
             return get_string(prompt);
         }
     }
 }
 
+pub fn get_addr(port: usize) -> SocketAddr {
+    let server_host = get_string("server host address");
+    match format!("{}:{}", server_host, port).parse() {
+        Ok(addr) => addr,
+        Err(err) => {
+            println!("{}", err);
+            return get_addr(port);
+        }
+    }
+}
+
 pub fn timestamp() -> String {
-    let now = Utc::now();
-    let (_pm, hour) = now.hour12();
-    format!("{:02}:{:02}:{:02}", hour + 1, now.minute(), now.second())
+    let now = Local::now();
+    format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
 }
 
 pub fn show_msg(buff: &[u8], size: usize) {
@@ -49,4 +60,12 @@ pub fn show_msg(buff: &[u8], size: usize) {
         },
         Err(err) => println!("{}", err),
     }
+}
+
+pub fn connection_error(addr: SocketAddr) {
+    println!(
+        "[{}] An error occurred, terminating connection with {}",
+        timestamp(),
+        addr
+    );
 }
