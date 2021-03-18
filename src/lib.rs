@@ -60,7 +60,6 @@ pub fn show_msg(buff: &[u8], size: usize) {
                     "\r[{}]<{}>: {}",
                     msg_obj["time"], msg_obj["nick"], msg_obj["text"]
                 );
-                io::stdout().flush().unwrap()
             }
             _ => return,
         },

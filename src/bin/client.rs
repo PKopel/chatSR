@@ -53,15 +53,16 @@ impl Client {
             let mut msg_buff = [0 as u8; 1024];
             loop {
                 match stream.read(&mut msg_buff) {
-                    Ok(size) if size > 3 => show_msg(&msg_buff, size),
+                    Ok(size) if size > 3 => {
+                        show_msg(&msg_buff, size);
+                        print!("\rpress {}", SMALL_HELP);
+                    }
                     Ok(_) => break,
                     Err(err) => {
                         println!("{}", err);
                         break;
                     }
                 }
-                print!("\rpress {}", SMALL_HELP);
-                io::stdout().flush().unwrap();
             }
         });
     }
@@ -72,26 +73,27 @@ impl Client {
             let mut msg_buff = [0 as u8; 1024];
             loop {
                 match socket.recv_from(&mut msg_buff) {
-                    Ok((size, _addr)) if size > 3 => show_msg(&msg_buff, size),
+                    Ok((size, _addr)) if size > 3 => {
+                        show_msg(&msg_buff, size);
+                        print!("\rpress {}", SMALL_HELP);
+                    }
                     Ok(_) => break,
                     Err(err) => {
                         println!("{}", err);
                         break;
                     }
                 }
-                print!("\rpress {}", SMALL_HELP);
-                io::stdout().flush().unwrap();
             }
         });
     }
 
-    fn prepare_msg(&self) -> String {
+    fn prepare_msg(&self, prompt: &str) -> String {
         execute!(
             io::stdout(),
             EnterAlternateScreen,
             MoveTo(0, 0),
             Show,
-            Print("your message: ")
+            Print(prompt)
         )
         .unwrap();
         let msg_text = get_message();
@@ -113,19 +115,14 @@ impl Client {
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
             match get_char() {
-                'm' => {
-                    terminal::disable_raw_mode()?;
-                    let msg = self.prepare_msg();
-                    self.socket.send_to(msg.as_bytes(), self.server_addr)?;
-                }
                 'u' => {
                     terminal::disable_raw_mode()?;
-                    let msg = self.prepare_msg();
+                    let msg = self.prepare_msg("udp message: ");
                     self.socket.send_to(msg.as_bytes(), self.server_addr)?;
                 }
                 't' => {
                     terminal::disable_raw_mode()?;
-                    let msg = self.prepare_msg();
+                    let msg = self.prepare_msg("tcp message: ");
                     self.stream.write(msg.as_bytes())?;
                 }
                 'h' => {
