@@ -52,18 +52,18 @@ pub fn timestamp() -> String {
     format!("{:02}:{:02}:{:02}", now.hour(), now.minute(), now.second())
 }
 
-pub fn show_msg(buff: &[u8], size: usize) {
+pub fn show_msg(buff: &[u8], size: usize) -> String {
     match str::from_utf8(&buff[..size]) {
         Ok(msg) => match json::parse(msg) {
             Ok(msg_obj) => {
-                print!(
-                    "\r[{}]<{}>: {}",
+                return format!(
+                    "[{}]<{}>: {}",
                     msg_obj["time"], msg_obj["nick"], msg_obj["text"]
                 );
             }
-            _ => return,
+            Err(err) => format!("{}", err),
         },
-        Err(err) => println!("{}", err),
+        Err(err) => format!("{}", err),
     }
 }
 

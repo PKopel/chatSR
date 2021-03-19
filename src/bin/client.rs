@@ -5,9 +5,11 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use json;
-use std::io::{self, Error, Read, Write};
+use std::io::{self, Error, Read, Stdout, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::str;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 extern crate chatsr;
@@ -28,6 +30,7 @@ struct Client {
     socket: UdpSocket,
     client_addr: SocketAddr,
     server_addr: SocketAddr,
+    stdout: Arc<Mutex<Stdout>>,
 }
 
 impl Client {
@@ -38,24 +41,40 @@ impl Client {
         let addr = stream.local_addr()?;
         let socket = UdpSocket::bind(addr)?;
         let nick = get_string("your nick");
+        let stdout = Arc::new(Mutex::new(io::stdout()));
         return Ok(Client {
             nick: nick,
             stream: stream.try_clone()?,
             socket: socket.try_clone()?,
             client_addr: addr,
             server_addr: server_addr,
+            stdout: stdout,
         });
     }
 
-    fn start_tcp_receiver(&self) -> JoinHandle<()> {
+    fn start_printer(&self, receiver: Receiver<String>) -> JoinHandle<()> {
+        let stdout = self.stdout.clone();
+        return thread::spawn(move || loop {
+            match receiver.recv() {
+                Ok(end) if end.as_str() == "end" => break,
+                Ok(msg) => {
+                    let _stdout = stdout.lock().unwrap();
+                    print!("\r{}press {}", msg, SMALL_HELP);
+                }
+                _ => break,
+            }
+        });
+    }
+
+    fn start_tcp_receiver(&self, sender: Sender<String>) -> JoinHandle<()> {
         let mut stream = self.stream.try_clone().unwrap();
         return thread::spawn(move || {
             let mut msg_buff = [0 as u8; 1024];
             loop {
                 match stream.read(&mut msg_buff) {
                     Ok(size) if size > 3 => {
-                        show_msg(&msg_buff, size);
-                        print!("\rpress {}", SMALL_HELP);
+                        let msg = show_msg(&msg_buff, size);
+                        sender.send(msg).unwrap();
                     }
                     Ok(_) => break,
                     Err(err) => {
@@ -67,15 +86,15 @@ impl Client {
         });
     }
 
-    fn start_udp_receiver(&self) -> JoinHandle<()> {
+    fn start_udp_receiver(&self, sender: Sender<String>) -> JoinHandle<()> {
         let socket = self.socket.try_clone().unwrap();
         return thread::spawn(move || {
             let mut msg_buff = [0 as u8; 1024];
             loop {
                 match socket.recv_from(&mut msg_buff) {
                     Ok((size, _addr)) if size > 3 => {
-                        show_msg(&msg_buff, size);
-                        print!("\rpress {}", SMALL_HELP);
+                        let msg = show_msg(&msg_buff, size);
+                        sender.send(msg).unwrap();
                     }
                     Ok(_) => break,
                     Err(err) => {
@@ -87,9 +106,10 @@ impl Client {
         });
     }
 
-    fn prepare_msg(&self, prompt: &str) -> String {
+    fn prepare_msg(&self, prompt: &str, sender: Sender<String>) -> String {
+        let mut stdout = self.stdout.lock().unwrap();
         execute!(
-            io::stdout(),
+            stdout,
             EnterAlternateScreen,
             MoveTo(0, 0),
             Show,
@@ -98,8 +118,9 @@ impl Client {
         .unwrap();
         let msg_text = get_message();
         let msg_time = timestamp();
-        execute!(io::stdout(), LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
-        print!("\r[{}]<you>: {}", msg_time, msg_text);
+        execute!(stdout, LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
+        let msg = format!("\r[{}]<you>: {}", msg_time, msg_text);
+        sender.send(msg).unwrap();
         return json::stringify(json::object! {
             time: msg_time,
             nick: self.nick.as_str(),
@@ -108,8 +129,10 @@ impl Client {
     }
 
     fn run(&mut self) -> crossterm::Result<()> {
-        let tcp_handle = self.start_tcp_receiver();
-        let udp_handle = self.start_udp_receiver();
+        let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+        let printer_handle = self.start_printer(rx);
+        let tcp_handle = self.start_tcp_receiver(tx.clone());
+        let udp_handle = self.start_udp_receiver(tx.clone());
         loop {
             print!("\rpress {}", SMALL_HELP);
             terminal::enable_raw_mode()?;
@@ -117,12 +140,12 @@ impl Client {
             match get_char() {
                 'u' => {
                     terminal::disable_raw_mode()?;
-                    let msg = self.prepare_msg("udp message: ");
+                    let msg = self.prepare_msg("udp message: ", tx.clone());
                     self.socket.send_to(msg.as_bytes(), self.server_addr)?;
                 }
                 't' => {
                     terminal::disable_raw_mode()?;
-                    let msg = self.prepare_msg("tcp message: ");
+                    let msg = self.prepare_msg("tcp message: ", tx.clone());
                     self.stream.write(msg.as_bytes())?;
                 }
                 'h' => {
@@ -134,6 +157,7 @@ impl Client {
                     execute!(io::stdout(), MoveToColumn(0), Show)?;
                     self.stream.write(b"end")?;
                     self.socket.send_to(b"end", self.client_addr)?;
+                    tx.send("end".to_string()).unwrap();
                     break;
                 }
                 _ => {}
@@ -142,6 +166,7 @@ impl Client {
         println!("closing client...");
         tcp_handle.join().unwrap();
         udp_handle.join().unwrap();
+        printer_handle.join().unwrap();
         Ok(())
     }
 }
