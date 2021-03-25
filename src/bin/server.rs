@@ -1,6 +1,9 @@
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::thread::{self, JoinHandle};
 
 extern crate chatsr;
@@ -12,6 +15,7 @@ struct Server {
     listener: TcpListener,
     socket: UdpSocket,
     clients: Arc<Mutex<Vec<TcpStream>>>,
+    running: Arc<AtomicBool>,
 }
 
 impl Server {
@@ -21,10 +25,12 @@ impl Server {
         let listener = TcpListener::bind(server_addr)?;
         let socket = UdpSocket::bind(server_addr)?;
         let clients = Arc::new(Mutex::new(vec![]));
+        let running = Arc::new(AtomicBool::new(true));
         return Ok(Server {
             listener: listener,
             socket: socket,
             clients: clients,
+            running: running,
         });
     }
 
@@ -104,7 +110,7 @@ impl Server {
         let mut handles: Vec<JoinHandle<()>> = vec![];
         handles.push(self.start_client_socket());
         println!("[{}] Server listening on port 34254", timestamp());
-        loop {
+        while self.running.load(Ordering::Relaxed) {
             let stream = self.listener.accept();
             match stream {
                 Ok((stream, addr)) => {
@@ -123,10 +129,15 @@ impl Server {
                 }
             }
         }
+        Ok(())
     }
 }
 
 fn main() -> io::Result<()> {
     let server = Server::new()?;
-    server.run()
+    let running = server.running.clone();
+    let server = thread::spawn(move || server.run());
+    io::stdin().read(&mut [0u8]).unwrap();
+    running.store(false, Ordering::Relaxed);
+    server.join().unwrap()
 }
