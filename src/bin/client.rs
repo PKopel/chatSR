@@ -58,8 +58,9 @@ impl Client {
             match receiver.recv() {
                 Ok(end) if end.as_str() == "end" => break,
                 Ok(msg) => {
-                    let _stdout = stdout.lock().unwrap();
-                    print!("\r{}press {}", msg, SMALL_HELP);
+                    let mut stdout = stdout.lock().unwrap();
+                    print!("\r{}\rpress {}", msg, SMALL_HELP);
+                    stdout.flush().unwrap();
                 }
                 _ => break,
             }
