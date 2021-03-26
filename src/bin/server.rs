@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 extern crate chatsr;
-use crate::chatsr::{connection_error, get_string, timestamp};
+use crate::chatsr::{connection_error, timestamp};
 
 const SERVER_PORT: usize = 34254;
+const SERVER_IP: &str = "0.0.0.0";
 
 struct Server {
     listener: TcpListener,
@@ -16,8 +17,7 @@ struct Server {
 
 impl Server {
     fn new() -> io::Result<Server> {
-        let server_host = get_string("server host address");
-        let server_addr: SocketAddr = format!("{}:{}", server_host, SERVER_PORT).parse().unwrap();
+        let server_addr: SocketAddr = format!("{}:{}", SERVER_IP, SERVER_PORT).parse().unwrap();
         let listener = TcpListener::bind(server_addr)?;
         let socket = UdpSocket::bind(server_addr)?;
         let clients = Arc::new(Mutex::new(vec![]));
