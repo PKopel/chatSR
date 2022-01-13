@@ -59,7 +59,7 @@ impl Client {
                 Ok(end) if end.as_str() == "end" => break,
                 Ok(msg) => {
                     let mut stdout = stdout.lock().unwrap();
-                    print!("\r{}\rpress {}", msg, SMALL_HELP);
+                    print!("\r{msg}\rpress {SMALL_HELP}");
                     stdout.flush().unwrap();
                 }
                 _ => break,
@@ -79,7 +79,7 @@ impl Client {
                     }
                     Ok(_) => break,
                     Err(err) => {
-                        println!("{}", err);
+                        println!("{err}");
                         break;
                     }
                 }
@@ -99,7 +99,7 @@ impl Client {
                     }
                     Ok(_) => break,
                     Err(err) => {
-                        println!("{}", err);
+                        println!("{err}");
                         break;
                     }
                 }
@@ -120,7 +120,7 @@ impl Client {
         let msg_text = get_message();
         let msg_time = timestamp();
         execute!(stdout, LeaveAlternateScreen, MoveToColumn(0), Hide).unwrap();
-        let msg = format!("\r[{}]<you>: {}", msg_time, msg_text);
+        let msg = format!("\r[{msg_time}]<you>: {msg_text}");
         sender.send(msg).unwrap();
         return json::stringify(json::object! {
             time: msg_time,
@@ -135,7 +135,7 @@ impl Client {
         let tcp_handle = self.start_tcp_receiver(tx.clone());
         let udp_handle = self.start_udp_receiver(tx.clone());
         loop {
-            print!("\rpress {}", SMALL_HELP);
+            print!("\rpress {SMALL_HELP}");
             terminal::enable_raw_mode()?;
             execute!(io::stdout(), Hide)?;
             match get_char() {
@@ -173,7 +173,7 @@ impl Client {
 }
 
 fn main() -> crossterm::Result<()> {
-    print!("{}", HELP);
+    print!("{HELP}");
     let mut client = Client::new()?;
     client.run()
 }

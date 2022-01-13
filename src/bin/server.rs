@@ -17,7 +17,7 @@ struct Server {
 
 impl Server {
     fn new() -> io::Result<Server> {
-        let server_addr: SocketAddr = format!("{}:{}", SERVER_IP, SERVER_PORT).parse().unwrap();
+        let server_addr: SocketAddr = format!("{SERVER_IP}:{SERVER_PORT}").parse().unwrap();
         let listener = TcpListener::bind(server_addr)?;
         let socket = UdpSocket::bind(server_addr)?;
         let clients = Arc::new(Mutex::new(vec![]));
@@ -62,7 +62,7 @@ impl Server {
                 Ok(client_addr) if client_addr != addr => true,
                 _ => false,
             });
-            println!("[{}] Closing connection: {}", timestamp(), addr);
+            println!("[{time}] Closing connection: {addr}", time = timestamp());
         });
     }
 
@@ -90,8 +90,8 @@ impl Server {
                     Ok(_) => break,
                     Err(_) => {
                         println!(
-                            "[{}] An error occurred while processing UDP message",
-                            timestamp()
+                            "[{time}] An error occurred while processing UDP message",
+                            time = timestamp()
                         );
                         break;
                     }
@@ -103,12 +103,12 @@ impl Server {
     fn run(&self) -> io::Result<()> {
         let mut handles: Vec<JoinHandle<()>> = vec![];
         handles.push(self.start_client_socket());
-        println!("[{}] Server listening on port 34254", timestamp());
+        println!("[{time}] Server listening on port 34254", time = timestamp());
         loop {
             let stream = self.listener.accept();
             match stream {
                 Ok((stream, addr)) => {
-                    println!("[{}] New connection: {}", timestamp(), addr);
+                    println!("[{time}] New connection: {addr}", time = timestamp());
                     self.clients
                         .lock()
                         .unwrap()

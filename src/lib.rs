@@ -18,13 +18,13 @@ pub fn get_char() -> char {
 }
 
 pub fn get_string(prompt: &str) -> String {
-    print!("{}: ", prompt);
+    print!("{prompt}: ");
     let mut nick = String::new();
     io::stdout().flush().unwrap();
     match io::stdin().read_line(&mut nick) {
         Ok(_) => return String::from(nick.trim_end()),
         Err(err) => {
-            println!("{}", err);
+            println!("{err}");
             return get_string(prompt);
         }
     }
@@ -38,10 +38,10 @@ pub fn get_message() -> String {
 
 pub fn get_addr(port: usize) -> SocketAddr {
     let server_host = get_string("server host address");
-    match format!("{}:{}", server_host, port).parse() {
+    match format!("{server_host}:{port}").parse() {
         Ok(addr) => addr,
         Err(err) => {
-            println!("{}", err);
+            println!("{err}");
             return get_addr(port);
         }
     }
@@ -57,20 +57,21 @@ pub fn show_msg(buff: &[u8], size: usize) -> String {
         Ok(msg) => match json::parse(msg) {
             Ok(msg_obj) => {
                 return format!(
-                    "[{}]<{}>: {}",
-                    msg_obj["time"], msg_obj["nick"], msg_obj["text"]
+                    "[{time}]<{nick}>: {text}",
+                    time = msg_obj["time"], 
+                    nick = msg_obj["nick"], 
+                    text = msg_obj["text"]
                 );
             }
-            Err(err) => format!("{}", err),
+            Err(err) => format!("{err}"),
         },
-        Err(err) => format!("{}", err),
+        Err(err) => format!("{err}"),
     }
 }
 
 pub fn connection_error(addr: SocketAddr) {
     println!(
-        "[{}] An error occurred, terminating connection with {}",
-        timestamp(),
-        addr
+        "[{time}] An error occurred, terminating connection with {addr}",
+        time = timestamp()
     );
 }
